@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teen Financial Quest - Level 1</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; background: #f0f4f8 }
+        #game-container { max-width: 800px; margin: 0 auto }
+        .game-button { padding: 10px 20px; font-size: 18px; cursor: pointer }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <!-- Game UI Templates -->
+    <template id="budget-form">
+        <div style="background: white; padding: 20px; border-radius: 10px; text-align: center">
+            <h2>💰 Budget Builder</h2>
+            <p>Total GC: <span id="total-gc">100</span></p>
+            <div style="margin: 15px 0">
+                <label>Needs: </label>
+                <input type="range" name="needs" min="0" max="100" value="50" class="budget-slider">
+                <span id="needs-value">50</span> GC
+            </div>
+            <div style="margin: 15px 0">
+                <label>Wants: </label>
+                <input type="range" name="wants" min="0" max="100" value="30" class="budget-slider">
+                <span id="wants-value">30</span> GC
+            </div>
+            <div style="margin: 15px 0">
+                <label>Savings: </label>
+                <input type="range" name="savings" min="0" max="100" value="20" class="budget-slider">
+                <span id="savings-value">20</span> GC
+            </div>
+            <button class="game-button" name="allocate">Allocate Funds</button>
+        </div>
+    </template>
+
+    <script>
+class Level1Scene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'Level1Scene' });
+        this.goldCoins = 100;
+        this.financialHealth = 50;
+        this.knowledgePoints = 0;
+        this.currentChallenge = null;
+    }
+
+    preload() {
+        this.load.image('neighborhood', 'assets/level1/neighborhood.png');
+        this.load.spritesheet('alex', 'assets/characters/alex.png', {
+            frameWidth: 64, frameHeight: 64
+        });
+        this.load.image('coin', 'assets/ui/coin.png');
+        this.load.audio('coin-sound', 'assets/sfx/coin.mp3');
+    }
+
+    create() {
+        // World Setup
+        this.createWorld();
+        this.createPlayer();
+        this.createAnimations();
+        this.createUI();
+        this.showBudgetAllocator();
+        this.setupEventHandlers();
+    }
+
+    createWorld() {
+        this.add.image(400, 300, 'neighborhood');
+        this.physics.world.setBounds(0, 0, 800, 600);
+    }
+
+    createPlayer() {
+        this.player = this.physics.add.sprite(100, 500, 'alex')
+            .setCollideWorldBounds(true)
+            .setScale(1.5);
+    }
+
+    createAnimations() {
+        this.anims.create({
+            key: 'walk',
+            frames: this.anims.generateFrameNumbers('alex', { start: 0, end: 3 }),
+            frameRate: 8,
+            repeat: -1
+        });
+    }
+
+    createUI() {
+        // Health Bar
+        this.healthBar = this.add.graphics()
+            .fillStyle(0x4CAF50, 1)
+            .fillRoundedRect(20, 20, 200, 20, 5);
+
+        // Coin Display
+        this.coinText = this.add.text(20, 50, `GC: ${this.goldCoins}`, {
+            fontSize: '24px', fill: '#FFD700', fontFamily: 'Arial'
+        });
+
+        // Knowledge Points
+        this.kpText = this.add.text(20, 80, `Knowledge: ${this.knowledgePoints}`, {
+            fontSize: '20px', fill: '#00BFFF', fontFamily: 'Arial'
+        });
+    }
+
+    showBudgetAllocator() {
+        const budgetForm = this.add.dom(400, 300).createFromCache('budget-form');
+        
+        // Slider Interactions
+        budgetForm.getChildByID('needs-value').textContent = budgetForm.getChildByName('needs').value;
+        budgetForm.getChildByID('wants-value').textContent = budgetForm.getChildByName('wants').value;
+        budgetForm.getChildByID('savings-value').textContent = budgetForm.getChildByName('savings').value;
+
+        budgetForm.addListener('input').on('input', (event) => {
+            const needs = parseInt(budgetForm.getChildByName('needs').value);
+            const wants = parseInt(budgetForm.getChildByName('wants').value);
+            const savings = parseInt(budgetForm.getChildByName('savings').value);
+            
+            budgetForm.getChildByID('needs-value').textContent = needs;
+            budgetForm.getChildByID('wants-value').textContent = wants;
+            budgetForm.getChildByID('savings-value').textContent = savings;
+            budgetForm.getChildByID('total-gc').textContent = needs + wants + savings;
+        });
+
+        budgetForm.addListener('click').on('click', (event) => {
+            if (event.target.name === 'allocate') {
+                const needs = parseInt(budgetForm.getChildByName('needs').value);
+                const wants = parseInt(budgetForm.getChildByName('wants').value);
+                const savings = parseInt(budgetForm.getChildByName('savings').value);
+                
+                if (needs + wants + savings === 100) {
+                    budgetForm.destroy();
+                    this.startShoppingChallenge();
+                }
+            }
+        });
+    }
+
+    startShoppingChallenge() {
+        this.shoppingItems = [
+            { name: 'School Supplies', cost: 20, type: 'need' },
+            { name: 'New Shoes', cost: 40, type: 'want' },
+            { name: 'Groceries', cost: 15, type: 'need' },
+            { name: 'Concert Ticket', cost: 25, type: 'want' }
+        ];
+        this.currentItem = 0;
+        this.presentShoppingDecision();
+    }
+
+    presentShoppingDecision() {
+        if (this.currentItem >= this.shoppingItems.length) {
+            this.startBossChallenge();
+            return;
+        }
+
+        const item = this.shoppingItems[this.currentItem];
+        this.showDecisionPopup(
+            `Buy ${item.name} for ${item.cost}GC?`,
+            () => this.handlePurchase(item),
+            () => this.skipPurchase()
+        );
+    }
+
+    handlePurchase(item) {
+        if (this.goldCoins >= item.cost) {
+            this.goldCoins -= item.cost;
+            this.coinText.setText(`GC: ${this.goldCoins}`);
+            this.knowledgePoints += item.type === 'need' ? 5 : -3;
+            this.kpText.setText(`Knowledge: ${this.knowledgePoints}`);
+            this.updateFinancialHealth(item.type === 'need' ? 5 : -5);
+        }
+        this.currentItem++;
+        this.presentShoppingDecision();
+    }
+
+    skipPurchase() {
+        this.knowledgePoints += 2;
+        this.kpText.setText(`Knowledge: ${this.knowledgePoints}`);
+        this.updateFinancialHealth(3);
+        this.currentItem++;
+        this.presentShoppingDecision();
+    }
+
+    startBossChallenge() {
+        this.bossActive = true;
+        this.showBossPopup();
+        this.setupBossMechanics();
+    }
+
+    showBossPopup() {
+        this.bossText = this.add.text(400, 100, 
+            "🚨 IMPULSE SPENDER ATTACK! 🚨\nPress SPACE 3 times quickly to resist!",
+            { fontSize: '24px', fill: '#FF0000', align: 'center' }
+        ).setOrigin(0.5);
+    }
+
+    setupBossMechanics() {
+        this.impulseCount = 0;
+        this.input.keyboard.on('keydown-SPACE', () => {
+            this.impulseCount++;
+            if (this.impulseCount >= 3) {
+                this.completeLevel();
+            }
+        });
+    }
+
+    completeLevel() {
+        this.bossActive = false;
+        this.input.keyboard.off('keydown-SPACE');
+        this.bossText.setText("🎉 LEVEL COMPLETE! 🎉\nFinancial Mentor Unlocked!");
+        this.updateFinancialHealth(30);
+    }
+
+    updateFinancialHealth(value) {
+        this.financialHealth = Phaser.Math.Clamp(this.financialHealth + value, 0, 100);
+        this.healthBar.clear()
+            .fillStyle(0x4CAF50)
+            .fillRoundedRect(20, 20, (this.financialHealth / 100) * 200, 20, 5);
+    }
+
+    setupEventHandlers() {
+        this.cursors = this.input.keyboard.createCursorKeys();
+    }
+
+    update() {
+        // Player Movement
+        if (this.cursors.left.isDown) {
+            this.player.setVelocityX(-200).anims.play('walk', true).flipX = true;
+        } else if (this.cursors.right.isDown) {
+            this.player.setVelocityX(200).anims.play('walk', true).flipX = false;
+        } else {
+            this.player.setVelocityX(0).anims.stop();
+        }
+    }
+
+    showDecisionPopup(text, yesCallback, noCallback) {
+        const popup = this.add.dom(400, 300).createElement('div', 
+            'background: white; padding: 20px; border-radius: 10px; text-align: center',
+            `<h3>${text}</h3>
+             <button class="game-button" id="yes-btn">Yes (Y)</button>
+             <button class="game-button" id="no-btn">No (N)</button>`
+        );
+
+        this.input.keyboard.once('keydown-Y', () => {
+            popup.destroy();
+            yesCallback();
+        });
+
+        this.input.keyboard.once('keydown-N', () => {
+            popup.destroy();
+            noCallback();
+        });
+    }
+}
+
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    parent: 'game-container',
+    scene: Level1Scene,
+    physics: {
+        default: 'arcade',
+        arcade: { gravity: { y: 0 } }
+    },
+    dom: { createContainer: true }
+};
+
+new Phaser.Game(config);
+    </script>
+</body>
+</html>
